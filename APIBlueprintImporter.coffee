@@ -17,11 +17,21 @@ APIBlueprintImporter = ->
         baseHost = metadata["value"]
 
     if not baseHost
-      # 3 dynamic values.
-      protocol = options.inputs['protocol'].getCurrentValue(true)
-      host = options.inputs['host'].getCurrentValue(true)
-      port = options.inputs['port'].getCurrentValue(true)
-      baseHost = DynamicString(protocol, "://", host, ":", port)
+      # baseHost is not defined in blueprint.
+      if options.inputs['useenviron']
+        # 3 dynamic values.
+        id = 'com.luckymarmot.EnvironmentVariableDynamicValue'
+        protocol = new DynamicValue(id, {
+          environmentVariable: options.inputs['protocol'].id
+        })
+        host = new DynamicValue(id, {
+          environmentVariable: options.inputs['host'].id
+        })
+        port = new DynamicValue(id, {
+          environmentVariable: options.inputs['port'].id
+        })
+        baseHost = DynamicString(protocol, "://", host, ":", port)
+      else baseHost = "http://my-host"
 
     # TODO make real base host
     resourceGroups = ast["resourceGroups"]
@@ -76,7 +86,6 @@ APIBlueprintImporter = ->
 
     requestGroup = context.createRequestGroup(name)
     for action in actions
-      console.log('importResource', typeof baseHost, baseHost.getOnlyDynamicValue())
       request = @importResourceAction(context, baseHost, url, action)
       requestGroup.appendChild(request)
 
@@ -107,11 +116,9 @@ APIBlueprintImporter = ->
     if attributes
       uriTemplate = attributes['uriTemplate']
       if uriTemplate && uriTemplate.length > 0
-        console.log('aaa', typeof baseHost, baseHost.getOnlyDynamicValue())
         url = DynamicString(baseHost, uriTemplate)
 
     console.log("Importing resource action '" + name + "' " + examples.length + " examples")
-    console.log(typeof url)
 
     if examples.length > 0
       if examples.length == 1
@@ -224,9 +231,10 @@ APIBlueprintImporter = ->
 APIBlueprintImporter.identifier = "io.apiary.PawExtensions.APIBlueprintImporter"
 APIBlueprintImporter.title = "API Blueprint Importer"
 APIBlueprintImporter.inputs = [
-    InputField('protocol', 'Server Protocol', 'EnvironmentVariable', {persisted: true, defaultValue: 'http'}),
-    InputField('host', 'Server Hostname', 'EnvironmentVariable', {persisted: true, defaultValue: 'localhost'}),
-    InputField('port', 'Server Port', 'EnvironmentVariable', {persisted: true, defaultValue: '8080'}),
+  InputField("useenviron", "Use Environs", "Checkbox", {defaultValue: true}),
+  InputField('protocol', 'Server Protocol', 'EnvironmentVariable', {persisted: true, defaultValue: 'http'}),
+  InputField('host', 'Server Hostname', 'EnvironmentVariable', {persisted: true, defaultValue: 'localhost'}),
+  InputField('port', 'Server Port', 'EnvironmentVariable', {persisted: true, defaultValue: '8080'})
 ]
 
 if typeof registerImporter != 'undefined'
