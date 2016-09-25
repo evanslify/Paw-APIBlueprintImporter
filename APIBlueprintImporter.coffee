@@ -5,18 +5,23 @@ APIBlueprintImporter = ->
   #
   # @param [Context] context Paw context
   # @param [Object] blueprint application/vnd.apiblueprint.parseresult+json
-  #
-  @importBlueprint = (context, blueprint) ->
+  # @param [Options] options Input Field Values
+
+  @importBlueprint = (context, blueprint, options) ->
     ast = blueprint["ast"]
     metadata = ast["metadata"]
     baseHost = null
 
     for metadata in ast["metadata"]
       if metadata["name"] == "HOST"
-          baseHost = metadata["value"]
+        baseHost = metadata["value"]
 
     if not baseHost
-        baseHost = "http://my-host.com"
+      # 3 dynamic values.
+      protocol = options.inputs['protocol'].getCurrentValue(true)
+      host = options.inputs['host'].getCurrentValue(true)
+      port = options.inputs['port'].getCurrentValue(true)
+      baseHost = DynamicString(protocol, "://", host, ":", port)
 
     # TODO make real base host
     resourceGroups = ast["resourceGroups"]
@@ -66,11 +71,12 @@ APIBlueprintImporter = ->
 
     console.log("Importing resource " + name)
 
-    url = baseHost + resource["uriTemplate"]
+    url = DynamicString(baseHost, resource["uriTemplate"])
     # TODO: uriTemplate and parameters
 
     requestGroup = context.createRequestGroup(name)
     for action in actions
+      console.log('importResource', typeof baseHost, baseHost.getOnlyDynamicValue())
       request = @importResourceAction(context, baseHost, url, action)
       requestGroup.appendChild(request)
 
@@ -101,20 +107,22 @@ APIBlueprintImporter = ->
     if attributes
       uriTemplate = attributes['uriTemplate']
       if uriTemplate && uriTemplate.length > 0
-          url = baseHost + uriTemplate
+        console.log('aaa', typeof baseHost, baseHost.getOnlyDynamicValue())
+        url = DynamicString(baseHost, uriTemplate)
 
     console.log("Importing resource action '" + name + "' " + examples.length + " examples")
+    console.log(typeof url)
 
     if examples.length > 0
-        if examples.length == 1
-          return @importExample(context, name, method, url, examples[0])
-        else
-          requestGroup = context.createRequestGroup(name)
-          for example in examples
-            request = @importExample(context, name, method, url, example)
-            requestGroup.appendChild(request)
+      if examples.length == 1
+        return @importExample(context, name, method, url, examples[0])
+      else
+        requestGroup = context.createRequestGroup(name)
+        for example in examples
+          request = @importExample(context, name, method, url, example)
+          requestGroup.appendChild(request)
 
-          return requestGroup
+        return requestGroup
     else
       request = context.createRequest(name, method, url)
 
@@ -137,7 +145,7 @@ APIBlueprintImporter = ->
 
     if requests != undefined && requests.length > 0
       if requests.length == 1
-          return @importExampleRequest(context, name, method, url, requests[0])
+        return @importExampleRequest(context, name, method, url, requests[0])
       else
         requestGroup = context.createRequestGroup(name)
 
@@ -187,7 +195,8 @@ APIBlueprintImporter = ->
   # @param [Context] context Paw context
   # @param [String] string Payload to import
   #
-  @importString = (context, string) ->
+
+  @importBlueprintString = (context, string, options) ->
     http_request = new NetworkHTTPRequest()
     http_request.requestUrl = "https://api.apiblueprint.org/parser"
     http_request.requestMethod = "POST"
@@ -199,17 +208,26 @@ APIBlueprintImporter = ->
       blueprint = JSON.parse(http_request.responseBody)
       if http_request.responseStatusCode is 200
         # success. may have some warnings.
-        @importBlueprint context, blueprint
+        @importBlueprint context, blueprint, options
         return true
       else if (http_request.responseStatusCode is 422 and blueprint['error'] != null)
         # some error happened
         throw new Error "There are one or more errors in your blueprint. \n #{JSON.stringify(blueprint['error'])}"
     else
       throw new Error "HTTP Request failed: " + http_request.responseStatusCode
+
+  @import = (context, items, options) ->
+    return @importBlueprintString(context, items[0].content, options)
+
   return
 
 APIBlueprintImporter.identifier = "io.apiary.PawExtensions.APIBlueprintImporter"
 APIBlueprintImporter.title = "API Blueprint Importer"
+APIBlueprintImporter.inputs = [
+    InputField('protocol', 'Server Protocol', 'EnvironmentVariable', {persisted: true, defaultValue: 'http'}),
+    InputField('host', 'Server Hostname', 'EnvironmentVariable', {persisted: true, defaultValue: 'localhost'}),
+    InputField('port', 'Server Port', 'EnvironmentVariable', {persisted: true, defaultValue: '8080'}),
+]
 
 if typeof registerImporter != 'undefined'
   registerImporter APIBlueprintImporter
